@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
   <root>
     <resheader name="resmimetype">
       <value>text/microsoft-resx</value>
@@ -577,6 +577,18 @@ Download now?</value>
     <data name="Visual_Color" xml:space="preserve">
       <value>Effect color</value>
     </data>
+    <data name="Visual_PaletteTitle" xml:space="preserve">
+      <value>Color presets</value>
+    </data>
+    <data name="Visual_GradientTrail" xml:space="preserve">
+      <value>Gradient trail</value>
+    </data>
+    <data name="Visual_SecondaryColor" xml:space="preserve">
+      <value>Secondary</value>
+    </data>
+    <data name="Visual_GradientHint" xml:space="preserve">
+      <value>Trail gradually blends from the primary color to the secondary color</value>
+    </data>
     <data name="Visual_InputHint" xml:space="preserve">
       <value>Tip: click a number, edit, then press Enter</value>
     </data>
@@ -634,4 +646,55 @@ Download now?</value>
     <data name="Welcome_Title" xml:space="preserve">
       <value>Welcome back, Sensei!</value>
     </data>
-  </root>
+    <data name="Visual_GradientStrength" xml:space="preserve">
+      <value>Trail gradient strength</value>
+    </data>
+    <data name="Filter_GameDetectionTitle" xml:space="preserve">
+      <value>Game folder detection</value>
+    </data>
+    <data name="Filter_GameDetectionSwitch" xml:space="preserve">
+      <value>Pause effects when a detected game has focus</value>
+    </data>
+    <data name="Filter_GameDetectionHint" xml:space="preserve">
+      <value>After adding game folders and scanning, effects pause (freeing render resources) while a listed game has focus, and resume automatically afterwards.</value>
+    </data>
+    <data name="Filter_GameDirectories" xml:space="preserve">
+      <value>Game folders</value>
+    </data>
+    <data name="Filter_AddGameDirectory" xml:space="preserve">
+      <value>Add game folder</value>
+    </data>
+    <data name="Filter_GameRemove" xml:space="preserve">
+      <value>Remove</value>
+    </data>
+    <data name="Filter_ScanGames" xml:space="preserve">
+      <value>Scan for games</value>
+    </data>
+    <data name="Filter_GameProcesses" xml:space="preserve">
+      <value>Detected game processes</value>
+    </data>
+    <data name="Filter_RemoveSelected" xml:space="preserve">
+      <value>Remove selected</value>
+    </data>
+    <data name="Dialog_GameDirectory" xml:space="preserve">
+      <value>Select a game root folder (game executables are scanned recursively)</value>
+    </data>
+    <data name="Msg_GameScanDone" xml:space="preserve">
+      <value>Scan finished: {0} candidate game processes found.</value>
+    </data>
+
+    <data name="Visual_RingGradient" xml:space="preserve">
+      <value>Ring gradient</value>
+    </data>
+
+    <data name="Visual_RingGradientHint" xml:space="preserve">
+      <value>The click ring arc and inner fill blend from the primary to the secondary color</value>
+    </data>
+
+    <data name="Visual_RingGradientStrength" xml:space="preserve">
+      <value>Ring gradient strength</value>
+    </data>
+    <data name="Visual_RingSecondaryColor" xml:space="preserve">
+      <value>Ring secondary</value>
+    </data>
+</root>

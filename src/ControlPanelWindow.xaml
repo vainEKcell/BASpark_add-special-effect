@@ -605,6 +605,40 @@
                                                             <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
                                                         </Button>
                                                     </StackPanel>
+
+                                                    <TextBlock x:Name="TxtPaletteTitle" Text="主题预设" Foreground="#666" Margin="0,12,0,8" FontSize="12"/>
+                                                    <WrapPanel x:Name="PalettePanel" Margin="0,0,0,2"/>
+
+                                                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                                        <CheckBox x:Name="CheckGradientTrail" Content="渐变拖尾" Style="{StaticResource ToggleSwitch}" Checked="GradientTrail_Changed" Unchecked="GradientTrail_Changed" VerticalAlignment="Center"/>
+                                                        <Border Name="ColorPreviewSecondary" Width="30" Height="24" CornerRadius="5" BorderBrush="#DDD" BorderThickness="1" Margin="24,0,8,0" Cursor="Hand" Background="White" MouseLeftButtonUp="PickSecondaryColor_Click" ToolTipService.ToolTip="拖尾副颜色"/>
+                                                        <Button x:Name="BtnPickColor2" Content="副颜色" Click="PickSecondaryColor_Click" Width="90" Height="26" VerticalAlignment="Center" Background="#F8FAFF" BorderBrush="#45AFFF" Foreground="#45AFFF" Cursor="Hand" FontSize="12">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="TxtGradientHint" Text="拖尾沿轨迹由主颜色渐变至副颜色" FontSize="11" Foreground="#999" Margin="0,6,0,0"/>
+
+                                                    <DockPanel Margin="0,14,0,0">
+                                                        <TextBlock x:Name="TxtGradientStrength" Text="拖尾渐变强度" Foreground="#555" FontSize="13" VerticalAlignment="Center"/>
+                                                        <TextBlock x:Name="TxtGradientStrengthValue" Text="100%" Foreground="#45AFFF" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" DockPanel.Dock="Right"/>
+                                                    </DockPanel>
+                                                    <Slider Name="SliderGradientStrength" Minimum="0" Maximum="1.5" TickFrequency="0.1" IsSnapToTickEnabled="True" HorizontalAlignment="Left" Width="280"
+                                                            ValueChanged="GradientStrength_ValueChanged" Margin="0,6,0,0"/>
+
+                                                    <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                                        <CheckBox x:Name="CheckRingGradient" Content="光圈渐变" Style="{StaticResource ToggleSwitch}" Checked="RingGradient_Changed" Unchecked="RingGradient_Changed" VerticalAlignment="Center"/>
+                                                        <Border Name="ColorPreviewRingSecondary" Width="30" Height="24" CornerRadius="5" BorderBrush="#DDD" BorderThickness="1" Margin="24,0,8,0" Cursor="Hand" Background="White" MouseLeftButtonUp="PickRingSecondaryColor_Click" ToolTipService.ToolTip="光圈副颜色"/>
+                                                        <Button x:Name="BtnPickRingColor2" Content="光圈副颜色" Click="PickRingSecondaryColor_Click" Width="90" Height="26" VerticalAlignment="Center" Background="#F8FAFF" BorderBrush="#45AFFF" Foreground="#45AFFF" Cursor="Hand" FontSize="12">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="TxtRingGradientHint" Text="点击光圈的弧线与内部填充由主颜色渐变至副颜色" FontSize="11" Foreground="#999" Margin="0,6,0,0"/>
+                                                    <DockPanel Margin="0,10,0,0">
+                                                        <TextBlock x:Name="TxtRingGradientStrength" Text="光圈渐变强度" Foreground="#555" FontSize="13" VerticalAlignment="Center"/>
+                                                        <TextBlock x:Name="TxtRingGradientStrengthValue" Text="100%" Foreground="#45AFFF" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" DockPanel.Dock="Right"/>
+                                                    </DockPanel>
+                                                    <Slider Name="SliderRingGradientStrength" Minimum="0" Maximum="1.5" TickFrequency="0.1" IsSnapToTickEnabled="True" HorizontalAlignment="Left" Width="280"
+                                                            ValueChanged="RingGradientStrength_ValueChanged" Margin="0,6,0,0"/>
                                                 </StackPanel>
                                             </Border>
                                         </StackPanel>
@@ -693,6 +727,32 @@
                                                             <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style></Button.Resources>
                                                         </Button>
                                                     </Grid>
+
+                                                    <Separator Background="#F0F2F5" Margin="0,8,0,15"/>
+
+                                                    <TextBlock x:Name="TxtGameDetectionTitle" Text="游戏目录检测" FontWeight="SemiBold" Foreground="#333" Margin="0,0,0,10"/>
+                                                    <CheckBox x:Name="CheckGameDetection" Content="检测到游戏前台运行时自动暂停特效" Style="{StaticResource ToggleSwitch}" Margin="0,0,0,6" Checked="GameDetection_Changed" Unchecked="GameDetection_Changed"/>
+                                                    <TextBlock x:Name="TxtGameDetectionHint" Text="添加游戏根目录并扫描后，名单内游戏获得焦点时将自动暂停特效并释放渲染资源，切出后自动恢复。" FontSize="11" Foreground="#999" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                                    <DockPanel Margin="0,0,0,8">
+                                                        <Button x:Name="BtnRemoveGameDirectory" Content="移除" Click="RemoveGameDirectory_Click" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="10,0" Height="28" Background="#FFF0F0" Foreground="#CC0000" BorderBrush="#FFCCCC">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                        <Button x:Name="BtnAddGameDirectory" Content="添加游戏根目录" Click="AddGameDirectory_Click" DockPanel.Dock="Right" Padding="12,0" Height="28" Background="#45AFFF" Foreground="White">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                        <TextBlock x:Name="TxtGameDirectories" Text="游戏根目录" FontWeight="SemiBold" Foreground="#333" VerticalAlignment="Center"/>
+                                                    </DockPanel>
+                                                    <ListBox Name="ListGameDirectories" Height="80" Background="#FDFDFF" BorderBrush="#E0E8F0" BorderThickness="1" Margin="0,0,0,10"/>
+                                                    <DockPanel Margin="0,0,0,8">
+                                                        <Button x:Name="BtnRemoveGameProcess" Content="移除所选" Click="RemoveGameProcess_Click" DockPanel.Dock="Right" Margin="5,0,0,0" Padding="10,0" Height="28" Background="#FFF0F0" Foreground="#CC0000" BorderBrush="#FFCCCC">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                        <Button x:Name="BtnScanGames" Content="扫描游戏程序" Click="ScanGames_Click" DockPanel.Dock="Right" Padding="12,0" Height="28" Background="#F8FAFF" BorderBrush="#45AFFF" Foreground="#45AFFF">
+                                                            <Button.Resources><Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style></Button.Resources>
+                                                        </Button>
+                                                        <TextBlock x:Name="TxtGameProcesses" Text="检测到的游戏进程" FontWeight="SemiBold" Foreground="#333" VerticalAlignment="Center"/>
+                                                    </DockPanel>
+                                                    <ListBox Name="ListGameProcesses" Height="110" Background="#FDFDFF" BorderBrush="#E0E8F0" BorderThickness="1"/>
                                                 </StackPanel>
                                             </Border>
                                         </StackPanel>

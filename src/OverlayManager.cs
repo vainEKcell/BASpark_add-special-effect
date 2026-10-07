@@ -132,6 +132,10 @@ namespace BASpark
         }
 
         public void UpdateColor(string color) => ForEachOverlay(w => w.UpdateColor(color));
+        public void UpdateColorStyle(string mainColor, string secondaryColor, bool gradientTrail,
+            double gradientStrength, string ringSecondaryColor, bool ringGradient, double ringGradientStrength) =>
+            ForEachOverlay(w => w.UpdateColorStyle(mainColor, secondaryColor, gradientTrail,
+                gradientStrength, ringSecondaryColor, ringGradient, ringGradientStrength));
         public void UpdateEffectSettings(double scale, double opacity, double trailSpeed, double clickSpeed) =>
             ForEachOverlay(w => w.UpdateEffectSettings(scale, opacity, trailSpeed, clickSpeed));
         public void UpdateTrailRefreshRate(int hz)
@@ -783,7 +787,9 @@ namespace BASpark
             }
 
             bool isSuppressedByProcessFilter = IsSuppressedByProcessFilter(processName);
-            UpdateSuppressionState(nowTicks, isSuppressedByProcessFilter);
+            bool isSuppressedByGame = ConfigManager.EnableGameDetection &&
+                                      ConfigManager.GetGameProcessEntries().Contains(processName, StringComparer.OrdinalIgnoreCase);
+            UpdateSuppressionState(nowTicks, isSuppressedByProcessFilter || isSuppressedByGame);
             return _isSuppressedByEnvironment;
         }
 

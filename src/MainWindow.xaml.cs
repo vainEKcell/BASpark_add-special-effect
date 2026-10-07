@@ -198,6 +198,17 @@ namespace BASpark
             ExecuteScript($"if(window.updateColor) window.updateColor('{color}');");
         }
 
+        public void UpdateColorStyle(string mainColor, string secondaryColor, bool gradientTrail,
+            double gradientStrength, string ringSecondaryColor, bool ringGradient, double ringGradientStrength)
+        {
+            string gradient = gradientTrail ? "true" : "false";
+            string strengthStr = gradientStrength.ToString("F2", CultureInfo.InvariantCulture);
+            string ringGradientStr = ringGradient ? "true" : "false";
+            string ringStrengthStr = ringGradientStrength.ToString("F2", CultureInfo.InvariantCulture);
+            ExecuteScript(
+                $"if(window.updateColorStyle) window.updateColorStyle('{mainColor}','{secondaryColor}',{gradient},{strengthStr},'{ringSecondaryColor}',{ringGradientStr},{ringStrengthStr});");
+        }
+
         public void UpdateEffectSettings(double scale, double opacity, double trailSpeed, double clickSpeed)
         {
             string scaleStr = scale.ToString("F2", CultureInfo.InvariantCulture);
@@ -441,6 +452,10 @@ namespace BASpark
                         _lastReportedInputMode = null;
                         _lastReportedAlwaysTrail = null;
                         UpdateColor(ConfigManager.ParticleColor);
+                        UpdateColorStyle(ConfigManager.ParticleColor, ConfigManager.SecondaryColor,
+                            ConfigManager.GradientTrailEnabled, ConfigManager.GradientStrength,
+                            ConfigManager.RingSecondaryColor, ConfigManager.RingGradientEnabled,
+                            ConfigManager.RingGradientStrength);
                         ConfigManager.GetAnimationSpeedsForOverlay(out double trailSp, out double clickSp);
                         UpdateEffectSettings(ConfigManager.EffectScale, ConfigManager.EffectOpacity, trailSp, clickSp);
                         SetCurveDraw(ConfigManager.ApplyCurveDraw);

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
   <root>
     <resheader name="resmimetype">
       <value>text/microsoft-resx</value>
@@ -577,6 +577,18 @@
     <data name="Visual_Color" xml:space="preserve">
       <value>エフェクト色</value>
     </data>
+    <data name="Visual_PaletteTitle" xml:space="preserve">
+      <value>カラープリセット</value>
+    </data>
+    <data name="Visual_GradientTrail" xml:space="preserve">
+      <value>グラデーション軌跡</value>
+    </data>
+    <data name="Visual_SecondaryColor" xml:space="preserve">
+      <value>サブカラー</value>
+    </data>
+    <data name="Visual_GradientHint" xml:space="preserve">
+      <value>軌跡がメインカラーからサブカラーへグラデーションします</value>
+    </data>
     <data name="Visual_InputHint" xml:space="preserve">
       <value>ヒント: 数値をクリックして編集し Enter で適用</value>
     </data>
@@ -634,4 +646,55 @@
     <data name="Welcome_Title" xml:space="preserve">
       <value>おかえりなさい、先生！</value>
     </data>
-  </root>
+    <data name="Visual_GradientStrength" xml:space="preserve">
+      <value>軌跡グラデーション強度</value>
+    </data>
+    <data name="Filter_GameDetectionTitle" xml:space="preserve">
+      <value>ゲームフォルダ検出</value>
+    </data>
+    <data name="Filter_GameDetectionSwitch" xml:space="preserve">
+      <value>検出したゲームが前面のときエフェクトを一時停止</value>
+    </data>
+    <data name="Filter_GameDetectionHint" xml:space="preserve">
+      <value>ゲームフォルダを追加してスキャンすると、リスト内のゲームが前面に表示されている間はエフェクトを一時停止して描画リソースを解放し、切り替え後に自動的に再開します。</value>
+    </data>
+    <data name="Filter_GameDirectories" xml:space="preserve">
+      <value>ゲームフォルダ</value>
+    </data>
+    <data name="Filter_AddGameDirectory" xml:space="preserve">
+      <value>ゲームフォルダを追加</value>
+    </data>
+    <data name="Filter_GameRemove" xml:space="preserve">
+      <value>削除</value>
+    </data>
+    <data name="Filter_ScanGames" xml:space="preserve">
+      <value>ゲームをスキャン</value>
+    </data>
+    <data name="Filter_GameProcesses" xml:space="preserve">
+      <value>検出されたゲームプロセス</value>
+    </data>
+    <data name="Filter_RemoveSelected" xml:space="preserve">
+      <value>選択を削除</value>
+    </data>
+    <data name="Dialog_GameDirectory" xml:space="preserve">
+      <value>ゲームのルートフォルダを選択（サブフォルダも再帰的にスキャンされます）</value>
+    </data>
+    <data name="Msg_GameScanDone" xml:space="preserve">
+      <value>スキャン完了：{0} 件の候補ゲームプロセスを検出しました。</value>
+    </data>
+
+    <data name="Visual_RingGradient" xml:space="preserve">
+      <value>リンググラデーション</value>
+    </data>
+
+    <data name="Visual_RingGradientHint" xml:space="preserve">
+      <value>クリックのリング弧と内側の塗りがメインカラーからサブカラーへ変化します</value>
+    </data>
+
+    <data name="Visual_RingGradientStrength" xml:space="preserve">
+      <value>リンググラデーション強度</value>
+    </data>
+    <data name="Visual_RingSecondaryColor" xml:space="preserve">
+      <value>リングサブカラー</value>
+    </data>
+</root>

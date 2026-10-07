@@ -53,13 +53,63 @@
             sparksCount: 4,
         };
 
+        // 渲染基准（与上游默认一致）；渐变开关开启时叠加对应增强层
+        const RENDER_PRESET = {
+            trailPasses: [
+                { lineWidth: 9, alphaMul: 0.05 },
+                { lineWidth: 6.0, alphaMul: 0.5 },
+                { lineWidth: 4.5, alphaMul: 1.0 },
+            ],
+            whiteCore: { lineWidth: 2.4, alphaMul: 0.5 },
+            headGlow: 0.30,
+            ringGlow: 0,
+            ringStart: [250, 252, 252],
+            sparkGlow: true,
+            radialFill: true,
+        };
+
+        // 上游默认的光环末端颜色（向白色收敛），光圈渐变关闭时使用以保证逐像素还原
         function ringsEndColorFromRgb(rgbString) {
             return rgbString.split(',').map(Number).map((n) => (n + 255 * 2) / 3);
+        }
+
+        function parseRgbList(rgbString) {
+            const parts = rgbString.split(',');
+            const out = [0, 0, 0];
+            for (let i = 0; i < 3; i++) {
+                const n = parseInt(parts[i], 10);
+                out[i] = Number.isFinite(n) ? Math.max(0, Math.min(255, n)) : 0;
+            }
+            return out;
+        }
+
+        function lerpRgbList(a, b, t) {
+            return [
+                Math.round(a[0] + (b[0] - a[0]) * t),
+                Math.round(a[1] + (b[1] - a[1]) * t),
+                Math.round(a[2] + (b[2] - a[2]) * t),
+            ];
+        }
+
+        function mixTowardWhite(rgb, amount) {
+            return lerpRgbList(rgb, [255, 255, 255], amount);
+        }
+
+        function clampStrength(value, fallback) {
+            let n = Number(value);
+            if (!Number.isFinite(n)) n = fallback;
+            return Math.max(0, Math.min(1.5, n));
         }
 
         class MouseSpark {
             constructor(opts = {}) {
                 this.color = opts.color || '45,175,255';
+                this.colorSecondary = opts.colorSecondary || '255,255,255';
+                this.ringColorSecondary = opts.ringColorSecondary || '255,255,255';
+                this.gradientTrail = opts.gradientTrail != null ? Boolean(opts.gradientTrail) : true;
+                this.gradientStrength = clampStrength(opts.gradientStrength, 1.0);
+                this.ringGradient = opts.ringGradient != null ? Boolean(opts.ringGradient) : true;
+                this.ringGradientStrength = clampStrength(opts.ringGradientStrength, 1.0);
                 this.scale = opts.scale || 1.5;
                 this.opacity = opts.opacity || 1.0;
                 this.trailSpeed = opts.trailSpeed != null ? opts.trailSpeed : (opts.speed || 1.0);
@@ -85,11 +135,30 @@
 
 
                 this.ringsStartColor = [250, 252, 252];
-                //this.ringsEndColor = [200, 250, 255];
-                this.ringsEndColor = ringsEndColorFromRgb(this.color);
 
                 this.initCanvas();
                 this.bindEvents();
+            }
+
+            get preset() {
+                return RENDER_PRESET;
+            }
+
+            // 应用风格预设：刷新光环起始色等派生值
+            applyStyle() {
+                this.ringsStartColor = this.preset.ringStart.slice();
+            }
+
+            // 拖尾沿程颜色：t=0 光标端，t=1 尾端
+            // gradientStrength 控制渐变强度：>1 时副色提前出现（更明显），0 为纯主色
+            trailColorAt(t) {
+                const main = parseRgbList(this.color);
+                const secondary = parseRgbList(this.colorSecondary);
+                if (!this.gradientTrail || this.gradientStrength <= 0) {
+                    return main;
+                }
+                const p = Math.min(1, Math.max(0, t) * this.gradientStrength);
+                return lerpRgbList(main, secondary, p);
             }
 
             bindEvents() {
@@ -330,17 +399,26 @@
 
                 // 逐段渲染：每段的透明度基于数组索引位置，而非空间位置
                 // 防止当鼠标锐角转动时，尾迹变淡后突然出现的问题
-                const glowPasses = [   
-                    { lineWidth: 9, alphaMul: this.alpha(0.05) },    // 外层辉光
-                    { lineWidth: 6.0,  alphaMul: this.alpha(0.5) },    // 内层辉光
-                    { lineWidth: 4.5,  alphaMul: this.alpha(1.0) },     // 核心线
-                ];
+                const preset = this.preset;
+                const gradientOn = this.gradientTrail && this.gradientStrength > 0;
+                const passes = preset.trailPasses.map((p) => ({
+                    lineWidth: p.lineWidth,
+                    alphaMul: this.alpha(p.alphaMul),
+                    kind: 'color',
+                }));
+                if (preset.whiteCore && gradientOn) {
+                    passes.push({
+                        lineWidth: preset.whiteCore.lineWidth,
+                        alphaMul: this.alpha(preset.whiteCore.alphaMul),
+                        kind: 'white',
+                    });
+                }
 
                 const lastIdx = pts.length - 1;
-                // 每段的透明度基于数组索引位置，而非空间位置
+                // 每段的透明度基于数组索引位置，而非空间索引
                 if (window.ApplyCurveDraw) {
                     // 逐段渲染（Catmull-Rom → Cubic Bezier 曲线版）
-                    for (const pass of glowPasses) {
+                    for (const pass of passes) {
                         ctx.lineWidth = pass.lineWidth;
                         for (let i = 0; i < lastIdx; i++) {
                             const a0 = pts[i];
@@ -358,8 +436,16 @@
                             const alphaStart = (i / lastIdx) * pass.alphaMul;
                             const alphaEnd = ((i + 1) / lastIdx) * pass.alphaMul;
                             const segGrad = ctx.createLinearGradient(a0.x, a0.y, a1.x, a1.y);
-                            segGrad.addColorStop(0, `rgba(${this.color}, ${alphaStart})`);
-                            segGrad.addColorStop(1, `rgba(${this.color}, ${alphaEnd})`);
+                            if (pass.kind === 'white') {
+                                // 白芯高光层：模拟 BA 特效中心亮线
+                                segGrad.addColorStop(0, `rgba(255,255,255, ${alphaStart})`);
+                                segGrad.addColorStop(1, `rgba(255,255,255, ${alphaEnd})`);
+                            } else {
+                                const colStart = this.trailColorAt(i / lastIdx);
+                                const colEnd = this.trailColorAt((i + 1) / lastIdx);
+                                segGrad.addColorStop(0, `rgba(${colStart[0]},${colStart[1]},${colStart[2]}, ${alphaStart})`);
+                                segGrad.addColorStop(1, `rgba(${colEnd[0]},${colEnd[1]},${colEnd[2]}, ${alphaEnd})`);
+                            }
 
                             ctx.beginPath();
                             ctx.moveTo(a0.x, a0.y);
@@ -369,7 +455,7 @@
                         }}
                 } else {
                     // 逐段渲染（直线版）
-                    for (const pass of glowPasses) {
+                    for (const pass of passes) {
                         ctx.lineWidth = pass.lineWidth;
                         for (let i = 0; i < lastIdx; i++) {
                             const alphaStart = (i / lastIdx) * pass.alphaMul;
@@ -378,8 +464,15 @@
                             const a1 = pts[i + 1];
 
                             const segGrad = ctx.createLinearGradient(a0.x, a0.y, a1.x, a1.y);
-                            segGrad.addColorStop(0, `rgba(${this.color}, ${alphaStart})`);
-                            segGrad.addColorStop(1, `rgba(${this.color}, ${alphaEnd})`);
+                            if (pass.kind === 'white') {
+                                segGrad.addColorStop(0, `rgba(255,255,255, ${alphaStart})`);
+                                segGrad.addColorStop(1, `rgba(255,255,255, ${alphaEnd})`);
+                            } else {
+                                const colStart = this.trailColorAt(i / lastIdx);
+                                const colEnd = this.trailColorAt((i + 1) / lastIdx);
+                                segGrad.addColorStop(0, `rgba(${colStart[0]},${colStart[1]},${colStart[2]}, ${alphaStart})`);
+                                segGrad.addColorStop(1, `rgba(${colEnd[0]},${colEnd[1]},${colEnd[2]}, ${alphaEnd})`);
+                            }
 
                             ctx.beginPath();
                             ctx.moveTo(a0.x, a0.y);
@@ -387,6 +480,23 @@
                             ctx.strokeStyle = segGrad;
                             ctx.stroke();
                         }}
+                }
+
+                // 光标端柔光晕：点亮当前触点，增强材质感（渐变拖尾开启时）
+                if (preset.headGlow > 0 && gradientOn && this.lastPos) {
+                    const head = this.lastPos;
+                    const hr = 13 * this.scale;
+                    const hgAlpha = this.alpha(preset.headGlow);
+                    const main = parseRgbList(this.color);
+                    const core = mixTowardWhite(main, 0.85);
+                    const hg = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, hr);
+                    hg.addColorStop(0, `rgba(${core[0]},${core[1]},${core[2]}, ${hgAlpha})`);
+                    hg.addColorStop(0.45, `rgba(${main[0]},${main[1]},${main[2]}, ${hgAlpha * 0.55})`);
+                    hg.addColorStop(1, `rgba(${main[0]},${main[1]},${main[2]}, 0)`);
+                    ctx.fillStyle = hg;
+                    ctx.beginPath();
+                    ctx.arc(head.x, head.y, hr, 0, Math.PI * 2);
+                    ctx.fill();
                 }
                 ctx.shadowColor = 'transparent';
             }
@@ -413,22 +523,45 @@
                     if (alpha > 0) {
                         ctx.beginPath();
                         ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(${this.color},${this.alpha(alpha)})`;
-                        // 优化：减少阴影效果
+                        if (this.preset.radialFill && this.ringGradient && this.ringGradientStrength > 0) {
+                            // 圆内渐变（光圈）：白热核心→主色→副色→透明边缘
+                            const main = parseRgbList(this.color);
+                            const core = mixTowardWhite(main, 0.85);
+                            const secondary = parseRgbList(this.ringColorSecondary);
+                            const edge = lerpRgbList(main, secondary, Math.min(1, this.ringGradientStrength));
+                            const grad = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, w.r);
+                            grad.addColorStop(0, `rgba(${core[0]},${core[1]},${core[2]}, ${this.alpha(alpha)})`);
+                            grad.addColorStop(0.42, `rgba(${main[0]},${main[1]},${main[2]}, ${this.alpha(alpha * 0.92)})`);
+                            grad.addColorStop(0.78, `rgba(${edge[0]},${edge[1]},${edge[2]}, ${this.alpha(alpha * 0.55)})`);
+                            grad.addColorStop(1, `rgba(${edge[0]},${edge[1]},${edge[2]}, 0)`);
+                            ctx.fillStyle = grad;
+                        } else {
+                            ctx.fillStyle = `rgba(${this.color},${this.alpha(alpha)})`;
+                        }
                         ctx.fill();
                     }
                 };
 
                 const updateRings = (w, ringProg) => {
                     const getWeightProp = (t) => Math.min(2 - Math.abs(4 * (t - 0.5)), 1);
-                    const ringRgbAt = (rProg) => {
+                    // 圆环渐变：沿弧线位置由主色过渡到副色，起始阶段从白色点火
+                    // 光圈渐变关闭时使用上游默认的收敛末端色，保证逐像素还原
+                    const mainRgb = parseRgbList(this.color);
+                    const secondaryRgb = parseRgbList(this.ringColorSecondary);
+                    const washedEndRgb = ringsEndColorFromRgb(this.color);
+                    const ringRgbAt = (rProg, alongT) => {
+                        const target = this.ringGradient && this.ringGradientStrength > 0
+                            ? lerpRgbList(mainRgb, secondaryRgb, Math.min(1, Math.max(0, alongT) * this.ringGradientStrength))
+                            : washedEndRgb;
                         const t = Math.min(1.2 * rProg, 1);
-                        const r = this.ringsStartColor[0] * (1 - t) + this.ringsEndColor[0] * t;
-                        const g = this.ringsStartColor[1] * (1 - t) + this.ringsEndColor[1] * t;
-                        const b = this.ringsStartColor[2] * (1 - t) + this.ringsEndColor[2] * t;
-                        return [Math.round(r), Math.round(g), Math.round(b)];
+                        return [
+                            Math.round(this.ringsStartColor[0] * (1 - t) + target[0] * t),
+                            Math.round(this.ringsStartColor[1] * (1 - t) + target[1] * t),
+                            Math.round(this.ringsStartColor[2] * (1 - t) + target[2] * t),
+                        ];
                     };
                     const getAlpha = (rProg) => Math.min(1.1 - 0.3 * rProg, 1);
+                    const ringGlowBlur = this.preset.ringGlow * this.scale;
 
                     const r = w.ring;
                     r.ang -= r.rs * clickFrameScale;
@@ -457,8 +590,22 @@
                         }
 
                         const lineWidthMul = Math.min(-0.8 * (ringProg - 0.8) + 1, 1);
-                        const [rr, gg, bb] = ringRgbAt(ringProg);
+                        const [gr, gg2, gb] = ringRgbAt(ringProg, 0.5);
                         const alphaRing = getAlpha(ringProg);
+                        const radius = w.r + seg.rRoundRate * this.scale;
+
+                        // 辉光层：整段弧线一次性加辉光，避免逐小段开阴影的开销
+                        if (ringGlowBlur > 0) {
+                            ctx.save();
+                            ctx.shadowColor = `rgba(${gr},${gg2},${gb},${alphaRing * 0.6})`;
+                            ctx.shadowBlur = ringGlowBlur;
+                            ctx.beginPath();
+                            ctx.arc(w.x, w.y, radius, start, end);
+                            ctx.lineWidth = Math.max(rings.maxW * lineWidthMul * 0.9, rings.minW);
+                            ctx.strokeStyle = `rgba(${gr},${gg2},${gb},${alphaRing * 0.35})`;
+                            ctx.stroke();
+                            ctx.restore();
+                        }
 
                         for (let k = 0; k < rings.segNum; k++) {
                             const t0 = k / rings.segNum;
@@ -470,8 +617,8 @@
 
                             const wT = getWeightProp(t0);
                             const lw = (rings.minW * (1 - wT) + rings.maxW * wT) * lineWidthMul;
+                            const [rr, gg, bb] = ringRgbAt(ringProg, t0);
                             const strokeStyle = `rgba(${rr},${gg},${bb},${alphaRing})`;
-                            const radius = w.r + seg.rRoundRate * this.scale;
                             // 光弧
                             this._strokeRingSegment(w.x, w.y, radius, a0, a1, lw, strokeStyle);
                         }
@@ -494,8 +641,22 @@
                 }
             }
 
+            _drawSparkShape(s) {
+                const ctx = this.bufferCtx;
+                // 三角形火花（与游戏内一致）
+                ctx.beginPath();
+                ctx.moveTo(0, -s.s);
+                ctx.lineTo(s.s * 0.6, s.s * 0.6);
+                ctx.lineTo(-s.s * 0.6, s.s * 0.6);
+                ctx.closePath();
+            }
+
             _updateSparks(clickFrameScale, trailFrameScale) {
                 const ctx = this.bufferCtx;
+                const preset = this.preset;
+                const main = parseRgbList(this.color);
+                const secondary = parseRgbList(this.colorSecondary);
+                const gradientOn = this.gradientTrail && this.gradientStrength > 0;
                 for (let i = this.sparks.length - 1; i >= 0; i--) {
                     const s = this.sparks[i];
                     const fs = s.fromClick ? clickFrameScale : trailFrameScale;
@@ -514,11 +675,18 @@
                     ctx.save();
                     ctx.translate(s.x, s.y);
                     ctx.rotate(s.rot);
-                    ctx.beginPath();
-                    ctx.moveTo(0, -s.s);
-                    ctx.lineTo(s.s * 0.6, s.s * 0.6);
-                    ctx.lineTo(-s.s * 0.6, s.s * 0.6);
-                    ctx.fillStyle = `rgba(255,255,255,${this.alpha(s.a)})`;
+                    this._drawSparkShape(s);
+                    if (preset.sparkGlow && gradientOn) {
+                        // 粒子渐变：白热中心→主色→副色边缘（随拖尾渐变开关）
+                        const edge = lerpRgbList(main, secondary, Math.min(1, this.gradientStrength));
+                        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, s.s);
+                        g.addColorStop(0, `rgba(255,255,255, ${this.alpha(s.a)})`);
+                        g.addColorStop(0.5, `rgba(${main[0]},${main[1]},${main[2]}, ${this.alpha(s.a * 0.92)})`);
+                        g.addColorStop(1, `rgba(${edge[0]},${edge[1]},${edge[2]}, ${this.alpha(s.a * 0.85)})`);
+                        ctx.fillStyle = g;
+                    } else {
+                        ctx.fillStyle = `rgba(255,255,255,${this.alpha(s.a)})`;
+                    }
                     ctx.fill();
                     ctx.restore();
                 }
@@ -807,8 +975,26 @@
         window.updateColor = (rgbString) => {
             if (window.spark) {
                 window.spark.color = rgbString;
-                window.spark.ringsEndColor = ringsEndColorFromRgb(rgbString);
+                window.spark.applyStyle();
             }
+        };
+
+        // 完整色彩风格设置：主颜色 / 拖尾副颜色 / 拖尾渐变 / 拖尾渐变强度 / 光圈副颜色 / 光圈渐变 / 光圈渐变强度
+        window.updateColorStyle = (mainColor, secondaryColor, gradientTrail,
+                                   gradientStrength, ringSecondaryColor, ringGradient, ringGradientStrength) => {
+            if (!window.spark) return;
+            window.spark.color = mainColor;
+            if (typeof secondaryColor === 'string' && secondaryColor.length > 0) {
+                window.spark.colorSecondary = secondaryColor;
+            }
+            window.spark.gradientTrail = Boolean(gradientTrail);
+            window.spark.gradientStrength = clampStrength(gradientStrength, window.spark.gradientStrength);
+            if (typeof ringSecondaryColor === 'string' && ringSecondaryColor.length > 0) {
+                window.spark.ringColorSecondary = ringSecondaryColor;
+            }
+            window.spark.ringGradient = Boolean(ringGradient);
+            window.spark.ringGradientStrength = clampStrength(ringGradientStrength, window.spark.ringGradientStrength);
+            window.spark.applyStyle();
         };
 
         window.updateEffectSettings = (scale, opacity, trailSpeed, clickSpeed) => {

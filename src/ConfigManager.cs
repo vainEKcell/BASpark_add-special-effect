@@ -1,4 +1,4 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -63,6 +63,15 @@ namespace BASpark
         private const string RegPath = @"Software\BASpark";
 
         public static string ParticleColor { get; set; } = "45,175,255";
+        public static string SecondaryColor { get; set; } = "255,255,255";
+        public static string RingSecondaryColor { get; set; } = "255,255,255";
+        public static bool GradientTrailEnabled { get; set; } = true;
+        public static double GradientStrength { get; set; } = 1.0;
+        public static bool RingGradientEnabled { get; set; } = true;
+        public static double RingGradientStrength { get; set; } = 1.0;
+        public static bool EnableGameDetection { get; set; } = false;
+        public static string GameDirectories { get; set; } = "";
+        public static string GameProcesses { get; set; } = "";
         public static bool IsEffectEnabled { get; set; } = true;
         public static bool AutoStart { get; set; } = false;
         public static bool AgreedToPrivacy { get; set; } = false;
@@ -109,6 +118,9 @@ namespace BASpark
         // 性能优化：为高频热路径增加只读过滤器缓存
         private static HashSet<string> _cachedFilterEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // 游戏检测进程名单缓存（前台进程热路径使用）
+        private static HashSet<string> _cachedGameProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // 缓存属性元数据，避免 Save() 每次都反射查找
         private static readonly ConcurrentDictionary<string, PropertyInfo?> _propertyCache = new();
 
@@ -124,6 +136,16 @@ namespace BASpark
                     if (key != null)
                     {
                         ParticleColor = key.GetValue("ParticleColor", "45,175,255")?.ToString() ?? "45,175,255";
+                        SecondaryColor = key.GetValue("SecondaryColor", "255,255,255")?.ToString() ?? "255,255,255";
+                        RingSecondaryColor = key.GetValue("RingSecondaryColor", "255,255,255")?.ToString() ?? "255,255,255";
+                        GradientTrailEnabled = Convert.ToBoolean(key.GetValue("GradientTrailEnabled", true));
+                        GradientStrength = Math.Clamp(Convert.ToDouble(key.GetValue("GradientStrength", 1.0), CultureInfo.InvariantCulture), 0.0, 1.5);
+                        RingGradientEnabled = Convert.ToBoolean(key.GetValue("RingGradientEnabled", true));
+                        RingGradientStrength = Math.Clamp(Convert.ToDouble(key.GetValue("RingGradientStrength", 1.0), CultureInfo.InvariantCulture), 0.0, 1.5);
+                        EnableGameDetection = Convert.ToBoolean(key.GetValue("EnableGameDetection", false));
+                        GameDirectories = key.GetValue("GameDirectories", "")?.ToString() ?? "";
+                        GameProcesses = key.GetValue("GameProcesses", "")?.ToString() ?? "";
+                        UpdateGameProcessCache();
 
                         IsEffectEnabled = Convert.ToBoolean(key.GetValue("IsEffectEnabled", true));
                         AutoStart = Convert.ToBoolean(key.GetValue("AutoStart", false));
@@ -348,6 +370,12 @@ namespace BASpark
             if (flags.HasFlag(VisualAppearanceResetFlags.ParticleColor))
             {
                 Save("ParticleColor", "45,175,255");
+                Save("SecondaryColor", "255,255,255");
+                Save("RingSecondaryColor", "255,255,255");
+                Save("GradientTrailEnabled", true);
+                Save("GradientStrength", 1.0);
+                Save("RingGradientEnabled", true);
+                Save("RingGradientStrength", 1.0);
             }
         }
 
@@ -408,6 +436,152 @@ namespace BASpark
         public static IReadOnlySet<string> GetProcessFilterEntries()
         {
             return _cachedFilterEntries;
+        }
+
+        /// <summary>
+        /// 游戏检测的进程名单（小写进程名，不含 .exe），前台热路径只读。
+        /// </summary>
+        public static IReadOnlySet<string> GetGameProcessEntries()
+        {
+            return _cachedGameProcesses;
+        }
+
+        public static void UpdateGameProcessCache()
+        {
+            _cachedGameProcesses = DeserializeStringList(GameProcesses)
+                .Select(s => s.Trim().ToLowerInvariant())
+                .Where(s => s.Length > 0)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        }
+
+        public static List<string> GetGameDirectoriesList() => DeserializeStringList(GameDirectories);
+
+        public static void SaveGameDirectories(IEnumerable<string> directories)
+        {
+            GameDirectories = SerializeStringList(directories);
+            Save("GameDirectories", GameDirectories);
+        }
+
+        public static List<string> GetGameProcessesList() => DeserializeStringList(GameProcesses);
+
+        public static void SaveGameProcesses(IEnumerable<string> processes)
+        {
+            GameProcesses = SerializeStringList(processes);
+            Save("GameProcesses", GameProcesses);
+            UpdateGameProcessCache();
+        }
+
+        private static List<string> DeserializeStringList(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return new List<string>();
+            }
+
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Warn($"Failed to deserialize string list: {ex.Message}");
+                return new List<string>();
+            }
+        }
+
+        private static string SerializeStringList(IEnumerable<string> values)
+        {
+            var normalized = values
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return System.Text.Json.JsonSerializer.Serialize(normalized);
+        }
+
+        /// <summary>
+        /// 递归扫描游戏目录下的候选游戏主程序（排除安装器/运行库/崩溃处理等常见非游戏进程）。
+        /// </summary>
+        public static List<string> ScanGameExecutables(IEnumerable<string> directories, int maxDepth = 3)
+        {
+            string[] excludeKeywords =
+            {
+                "unins", "setup", "install", "crash", "redist", "vcredist", "dxsetup", "dotnet",
+                "directx", "bootstrap", "physx", "oalinst", "report", "prereq",
+                "language", "updater", "helper", "hdinstaller", "error", "support",
+                "eac", "easyanticheat", "battleye", "beservice", "steamerror", "vc_redist",
+                "progress", "shadercompile", "license"
+            };
+
+            var results = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string dir in directories)
+            {
+                if (string.IsNullOrWhiteSpace(dir) || !System.IO.Directory.Exists(dir))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    WalkDirectory(dir, 0, maxDepth, excludeKeywords, results, seen);
+                }
+                catch (Exception ex)
+                {
+                    AppLogger.Warn($"Game directory scan failed for '{dir}': {ex.Message}");
+                }
+            }
+
+            return results
+                .Select(System.IO.Path.GetFileNameWithoutExtension)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static void WalkDirectory(string dir, int depth, int maxDepth, string[] excludeKeywords, List<string> results, HashSet<string> seen)
+        {
+            if (depth > maxDepth)
+            {
+                return;
+            }
+
+            foreach (string file in System.IO.Directory.EnumerateFiles(dir, "*.exe", System.IO.SearchOption.TopDirectoryOnly))
+            {
+                string name = System.IO.Path.GetFileName(file);
+                string lower = name.ToLowerInvariant();
+                if (lower.EndsWith(".exe") && lower.Length > 4)
+                {
+                    string stem = lower[..^4];
+                    if (!excludeKeywords.Any(k => stem.Contains(k)))
+                    {
+                        string stemKey = stem;
+                        if (seen.Add(stemKey))
+                        {
+                            results.Add(file);
+                        }
+                    }
+                }
+            }
+
+            if (depth == maxDepth)
+            {
+                return;
+            }
+
+            foreach (string sub in System.IO.Directory.EnumerateDirectories(dir))
+            {
+                string folder = System.IO.Path.GetFileName(sub);
+                if (folder.StartsWith(".") || folder.StartsWith("$") ||
+                    string.Equals(folder, "bin", StringComparison.OrdinalIgnoreCase) && depth > 0 ||
+                    string.Equals(folder, "Redistributables", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                WalkDirectory(sub, depth + 1, maxDepth, excludeKeywords, results, seen);
+            }
         }
 
         public static HashSet<string> GetEnabledScreenIds()
@@ -560,6 +734,16 @@ namespace BASpark
                     }
 
                     ParticleColor = "45,175,255";
+                    SecondaryColor = "255,255,255";
+                    RingSecondaryColor = "255,255,255";
+                    GradientTrailEnabled = true;
+                    GradientStrength = 1.0;
+                    RingGradientEnabled = true;
+                    RingGradientStrength = 1.0;
+                    EnableGameDetection = false;
+                    GameDirectories = "";
+                    GameProcesses = "";
+                    _cachedGameProcesses.Clear();
                     IsEffectEnabled = true;
                     AutoStart = false;
                     AgreedToPrivacy = false;

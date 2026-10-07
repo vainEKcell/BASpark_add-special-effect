@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Windows;
@@ -79,17 +79,33 @@ namespace BASpark
         private DispatcherTimer? _scrollbarHideTimer;
         private bool _isCheckingUpdate = false;
         private bool _suspendLinkedAnimationUiHandlers;
+        private bool _suspendVisualHandlers;
         private string _languageAtLoad = Localization.CultureZhCn;
         private NetworkRegionOption _networkRegionAtLoad = NetworkRegionOption.Auto;
         private bool _autoNetworkFailurePromptShown;
         private bool _logViewInitialized;
         private readonly object _networkPromptLock = new();
 
+        // 主题预设色板（双色渐变预设：主颜色 + 副颜色）
+        private static readonly (string Name, string MainRgb, string SecondaryRgb)[] PaletteColors =
+        {
+            ("ShittimChest", "45,175,255", "255,255,255"),
+            ("Millennium", "80,120,255", "180,230,255"),
+            ("Sakura", "255,120,190", "255,225,240"),
+            ("Mint", "110,230,160", "235,255,242"),
+            ("Hoshino", "255,165,90", "255,235,210"),
+            ("Lavender", "185,140,255", "228,208,255"),
+            ("Sunset", "255,110,110", "255,220,180"),
+            ("Trinity", "248,250,253", "190,220,248"),
+        };
+
         public ObservableCollection<FilterProfile> Profiles { get; set; } = new ObservableCollection<FilterProfile>();
         public ObservableCollection<string> CurrentProfileProcesses { get; set; } = new ObservableCollection<string>();
         public ObservableCollection<ProcessItem> RunningProcessList { get; set; } = new ObservableCollection<ProcessItem>();
         public ObservableCollection<VisualResetItem> VisualResetItems { get; set; } = new ObservableCollection<VisualResetItem>();
         public ObservableCollection<ScreenOptionItem> ScreenOptions { get; set; } = new ObservableCollection<ScreenOptionItem>();
+        public ObservableCollection<string> GameDirectoryItems { get; set; } = new ObservableCollection<string>();
+        public ObservableCollection<string> GameProcessItems { get; set; } = new ObservableCollection<string>();
 
         public ControlPanelWindow()
         {
@@ -105,8 +121,11 @@ namespace BASpark
             ListRunningProcesses.ItemsSource = RunningProcessList;
             ListVisualResetItems.ItemsSource = VisualResetItems;
             ListScreenOptions.ItemsSource = ScreenOptions;
+            ListGameDirectories.ItemsSource = GameDirectoryItems;
+            ListGameProcesses.ItemsSource = GameProcessItems;
 
             LoadVersion();
+            BuildColorPalette();
             LoadSettings();
             ApplyScrollbarSettings();
             UiLocalizer.ApplyControlPanel(this);
@@ -541,6 +560,7 @@ namespace BASpark
         private void LoadSettings()
         {
             _suspendLinkedAnimationUiHandlers = true;
+            _suspendVisualHandlers = true;
             try
             {
                 LoadSettingsCore();
@@ -548,6 +568,7 @@ namespace BASpark
             finally
             {
                 _suspendLinkedAnimationUiHandlers = false;
+                _suspendVisualHandlers = false;
             }
         }
 
@@ -578,6 +599,16 @@ namespace BASpark
             ComboProfiles.SelectedItem = active;
 
             UpdateColorPreview(ConfigManager.ParticleColor);
+            UpdateSecondaryColorPreview(ConfigManager.SecondaryColor);
+            UpdateRingSecondaryColorPreview(ConfigManager.RingSecondaryColor);
+            CheckGradientTrail.IsChecked = ConfigManager.GradientTrailEnabled;
+            SliderGradientStrength.Value = ConfigManager.GradientStrength;
+            UpdateGradientStrengthLabel();
+            CheckRingGradient.IsChecked = ConfigManager.RingGradientEnabled;
+            SliderRingGradientStrength.Value = ConfigManager.RingGradientStrength;
+            UpdateRingGradientStrengthLabel();
+            CheckGameDetection.IsChecked = ConfigManager.EnableGameDetection;
+            RefreshGameLists();
             UpdateClickEffectPanelVisibility();
             UpdateEnvironmentFilterInterlock();
 
@@ -998,6 +1029,309 @@ namespace BASpark
             }
         }
 
+        private void BuildColorPalette()
+        {
+            if (PalettePanel == null) return;
+            PalettePanel.Children.Clear();
+            foreach (var (name, mainRgb, secondaryRgb) in PaletteColors)
+            {
+                var gradient = new LinearGradientBrush
+                {
+                    StartPoint = new System.Windows.Point(0, 0),
+                    EndPoint = new System.Windows.Point(1, 1),
+                };
+                gradient.GradientStops.Add(new GradientStop(BuildColor(mainRgb), 0));
+                gradient.GradientStops.Add(new GradientStop(BuildColor(secondaryRgb), 1));
+
+                var swatch = new System.Windows.Controls.Border
+                {
+                    Width = 24,
+                    Height = 24,
+                    CornerRadius = new CornerRadius(12),
+                    BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xE0, 0xE0, 0xE8)),
+                    BorderThickness = new Thickness(1),
+                    Margin = new Thickness(0, 0, 8, 8),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Tag = (mainRgb, secondaryRgb),
+                    ToolTip = $"{name}: {mainRgb} → {secondaryRgb}",
+                    Background = gradient,
+                };
+                swatch.MouseLeftButtonUp += PaletteSwatch_Click;
+                PalettePanel.Children.Add(swatch);
+            }
+        }
+
+        private static System.Windows.Media.Color BuildColor(string rgbString)
+        {
+            var parts = rgbString.Split(',');
+            return System.Windows.Media.Color.FromRgb(
+                byte.Parse(parts[0].Trim()), byte.Parse(parts[1].Trim()), byte.Parse(parts[2].Trim()));
+        }
+
+        private static System.Windows.Media.SolidColorBrush BuildBrush(string rgbString)
+        {
+            try
+            {
+                return new System.Windows.Media.SolidColorBrush(BuildColor(rgbString));
+            }
+            catch
+            {
+                return System.Windows.Media.Brushes.Gray;
+            }
+        }
+
+        private void PaletteSwatch_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Border border && border.Tag is (string mainRgb, string secondaryRgb))
+            {
+                ConfigManager.ParticleColor = mainRgb;
+                ConfigManager.SecondaryColor = secondaryRgb;
+                ConfigManager.RingSecondaryColor = secondaryRgb;
+                UpdateColorPreview(mainRgb);
+                UpdateSecondaryColorPreview(secondaryRgb);
+                UpdateRingSecondaryColorPreview(secondaryRgb);
+                ApplyColorStyleToOverlay();
+            }
+        }
+
+        private void PickSecondaryColor_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            using var dialog = new System.Windows.Forms.ColorDialog();
+            dialog.FullOpen = true;
+            try
+            {
+                var parts = ConfigManager.SecondaryColor.Split(',');
+                dialog.Color = System.Drawing.Color.FromArgb(
+                    byte.Parse(parts[0]), byte.Parse(parts[1]), byte.Parse(parts[2]));
+            }
+            catch { /* ignore: fallback to default color */ }
+
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                ConfigManager.SecondaryColor = $"{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                UpdateSecondaryColorPreview(ConfigManager.SecondaryColor);
+                ApplyColorStyleToOverlay();
+            }
+        }
+
+        private void UpdateSecondaryColorPreview(string rgbString)
+        {
+            ColorPreviewSecondary.Background = BuildBrush(rgbString);
+        }
+
+        private void ApplyColorStyleToOverlay()
+        {
+            App.Overlay?.UpdateColorStyle(
+                ConfigManager.ParticleColor,
+                ConfigManager.SecondaryColor,
+                ConfigManager.GradientTrailEnabled,
+                ConfigManager.GradientStrength,
+                ConfigManager.RingSecondaryColor,
+                ConfigManager.RingGradientEnabled,
+                ConfigManager.RingGradientStrength);
+        }
+
+        private void PickRingSecondaryColor_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            using var dialog = new System.Windows.Forms.ColorDialog();
+            dialog.FullOpen = true;
+            try
+            {
+                var parts = ConfigManager.RingSecondaryColor.Split(',');
+                dialog.Color = System.Drawing.Color.FromArgb(
+                    byte.Parse(parts[0]), byte.Parse(parts[1]), byte.Parse(parts[2]));
+            }
+            catch { /* ignore: fallback to default color */ }
+
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                ConfigManager.RingSecondaryColor = $"{dialog.Color.R},{dialog.Color.G},{dialog.Color.B}";
+                UpdateRingSecondaryColorPreview(ConfigManager.RingSecondaryColor);
+                ApplyColorStyleToOverlay();
+            }
+        }
+
+        private void UpdateRingSecondaryColorPreview(string rgbString)
+        {
+            ColorPreviewRingSecondary.Background = BuildBrush(rgbString);
+        }
+
+        private void GradientTrail_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suspendVisualHandlers) return;
+            ConfigManager.GradientTrailEnabled = CheckGradientTrail.IsChecked ?? true;
+            ConfigManager.Save("GradientTrailEnabled", ConfigManager.GradientTrailEnabled);
+            ApplyColorStyleToOverlay();
+        }
+
+        private void GradientStrength_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suspendVisualHandlers || SliderGradientStrength == null) return;
+            ConfigManager.GradientStrength = Math.Round(SliderGradientStrength.Value, 2);
+            ConfigManager.Save("GradientStrength", ConfigManager.GradientStrength);
+            UpdateGradientStrengthLabel();
+            ApplyColorStyleToOverlay();
+        }
+
+        private void UpdateGradientStrengthLabel()
+        {
+            if (TxtGradientStrengthValue != null)
+            {
+                TxtGradientStrengthValue.Text = $"{SliderGradientStrength.Value:P0}";
+            }
+        }
+
+        private void RingGradient_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suspendVisualHandlers) return;
+            ConfigManager.RingGradientEnabled = CheckRingGradient.IsChecked ?? true;
+            ConfigManager.Save("RingGradientEnabled", ConfigManager.RingGradientEnabled);
+            ApplyColorStyleToOverlay();
+        }
+
+        private void RingGradientStrength_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suspendVisualHandlers || SliderRingGradientStrength == null) return;
+            ConfigManager.RingGradientStrength = Math.Round(SliderRingGradientStrength.Value, 2);
+            ConfigManager.Save("RingGradientStrength", ConfigManager.RingGradientStrength);
+            UpdateRingGradientStrengthLabel();
+            ApplyColorStyleToOverlay();
+        }
+
+        private void UpdateRingGradientStrengthLabel()
+        {
+            if (TxtRingGradientStrengthValue != null)
+            {
+                TxtRingGradientStrengthValue.Text = $"{SliderRingGradientStrength.Value:P0}";
+            }
+        }
+
+        private void RefreshGameLists()
+        {
+            GameDirectoryItems.Clear();
+            foreach (var d in ConfigManager.GetGameDirectoriesList()) GameDirectoryItems.Add(d);
+            GameProcessItems.Clear();
+            foreach (var p in ConfigManager.GetGameProcessesList()) GameProcessItems.Add(p);
+        }
+
+        private void GameDetection_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suspendVisualHandlers) return;
+            ConfigManager.EnableGameDetection = CheckGameDetection.IsChecked ?? false;
+            ConfigManager.Save("EnableGameDetection", ConfigManager.EnableGameDetection);
+            App.Overlay?.RefreshEnvironmentFilterState();
+        }
+
+        private void AddGameDirectory_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            _ = e;
+            using var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = Localization.Get("Dialog_GameDirectory") is { Length: > 0 } desc ? desc : "选择游戏根目录",
+                ShowNewFolderButton = false
+            };
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            {
+                return;
+            }
+
+            string path = dialog.SelectedPath.TrimEnd('\\');
+            var directories = ConfigManager.GetGameDirectoriesList();
+            if (directories.Contains(path, StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            directories.Add(path);
+            ConfigManager.SaveGameDirectories(directories);
+            RefreshGameLists();
+
+            // 添加后自动扫描合并
+            ScanAndMergeGameProcesses();
+        }
+
+        private void RemoveGameDirectory_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            _ = e;
+            if (ListGameDirectories.SelectedItem is not string selected)
+            {
+                return;
+            }
+
+            var directories = ConfigManager.GetGameDirectoriesList();
+            directories.RemoveAll(d => string.Equals(d, selected, StringComparison.OrdinalIgnoreCase));
+            ConfigManager.SaveGameDirectories(directories);
+            RefreshGameLists();
+        }
+
+        private void ScanGames_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            _ = e;
+            ScanAndMergeGameProcesses();
+        }
+
+        private void ScanAndMergeGameProcesses()
+        {
+            var directories = ConfigManager.GetGameDirectoriesList();
+            if (directories.Count == 0)
+            {
+                return;
+            }
+
+            var found = ConfigManager.ScanGameExecutables(directories);
+            var merged = ConfigManager.GetGameProcessesList();
+            merged.AddRange(found.Where(f => !merged.Contains(f, StringComparer.OrdinalIgnoreCase)));
+            ConfigManager.SaveGameProcesses(merged);
+            RefreshGameLists();
+
+            System.Windows.MessageBox.Show(
+                this,
+                Localization.Format("Msg_GameScanDone", found.Count),
+                Localization.Get("Filter_GameDetectionTitle"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+
+        private void RemoveGameProcess_Click(object sender, RoutedEventArgs e)
+        {
+            _ = sender;
+            _ = e;
+            if (ListGameProcesses.SelectedItem is not string selected)
+            {
+                return;
+            }
+
+            var processes = ConfigManager.GetGameProcessesList();
+            processes.RemoveAll(p => string.Equals(p, selected, StringComparison.OrdinalIgnoreCase));
+            ConfigManager.SaveGameProcesses(processes);
+            RefreshGameLists();
+        }
+
+        private static string GetComboTag(System.Windows.Controls.ComboBox combo, string fallback)
+        {
+            return combo.SelectedItem is ComboBoxItem item && item.Tag != null
+                ? item.Tag.ToString() ?? fallback
+                : fallback;
+        }
+
+        private static void SelectComboByTag(System.Windows.Controls.ComboBox combo, string tag)
+        {
+            foreach (var obj in combo.Items)
+            {
+                if (obj is ComboBoxItem item && string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+                {
+                    combo.SelectedItem = item;
+                    return;
+                }
+            }
+        }
+
         private void OpenLink_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not System.Windows.Controls.Button btn)
@@ -1316,6 +1650,10 @@ namespace BASpark
             double effectScale = Math.Round(SliderScale.Value, 2);
             double effectOpacity = Math.Round(SliderOpacity.Value / 100.0, 2);
             App.Overlay?.UpdateColor(ConfigManager.ParticleColor);
+            App.Overlay?.UpdateColorStyle(ConfigManager.ParticleColor, ConfigManager.SecondaryColor,
+                ConfigManager.GradientTrailEnabled, ConfigManager.GradientStrength,
+                ConfigManager.RingSecondaryColor, ConfigManager.RingGradientEnabled,
+                ConfigManager.RingGradientStrength);
             App.Overlay?.UpdateEffectSettings(effectScale, effectOpacity, trailSp, clickSp);
             App.Overlay?.UpdateTrailRefreshRate(trailRefreshRate);
             App.Overlay?.SetCurveDraw(CheckApplyCurveDraw.IsChecked ?? false);
@@ -1403,6 +1741,12 @@ namespace BASpark
             ConfigManager.Save("AutoStart", autoStartEnabled);
             ConfigManager.Save("EnableTelemetry", telemetryEnabled);
             ConfigManager.Save("ParticleColor", ConfigManager.ParticleColor);
+            ConfigManager.Save("SecondaryColor", ConfigManager.SecondaryColor);
+            ConfigManager.Save("RingSecondaryColor", ConfigManager.RingSecondaryColor);
+            ConfigManager.Save("GradientTrailEnabled", ConfigManager.GradientTrailEnabled);
+            ConfigManager.Save("GradientStrength", ConfigManager.GradientStrength);
+            ConfigManager.Save("RingGradientEnabled", ConfigManager.RingGradientEnabled);
+            ConfigManager.Save("RingGradientStrength", ConfigManager.RingGradientStrength);
             ConfigManager.Save("EffectScale", effectScale);
             ConfigManager.Save("EffectOpacity", effectOpacity);
             ConfigManager.Save("UseLinkedAnimationSpeed", useLinkedAnimationSpeed);
@@ -1481,6 +1825,10 @@ namespace BASpark
             ApplyAutoStartSettings();
 
             App.Overlay?.UpdateColor(ConfigManager.ParticleColor);
+            App.Overlay?.UpdateColorStyle(ConfigManager.ParticleColor, ConfigManager.SecondaryColor,
+                ConfigManager.GradientTrailEnabled, ConfigManager.GradientStrength,
+                ConfigManager.RingSecondaryColor, ConfigManager.RingGradientEnabled,
+                ConfigManager.RingGradientStrength);
             GetUiAnimationSpeeds(out double overlayTrail, out double overlayClick);
             App.Overlay?.UpdateEffectSettings(effectScale, effectOpacity, overlayTrail, overlayClick);
             App.Overlay?.UpdateTrailRefreshRate(trailRefreshRate);
